@@ -1,26 +1,46 @@
 // Serverless function — runs on Vercel's server, NOT in the visitor's browser.
-// This is what keeps your API key hidden from the audience.
+// This is what keeps your Anthropic API key hidden from the audience.
+// The key is read from the ANTHROPIC_API_KEY environment variable.
+
+// Model to use. Haiku 4.5 is fast and cheap — ideal for a live room.
+// Swap for "claude-sonnet-4-6" if you want richer, more nuanced profiles.
+const MODEL = "claude-haiku-4-5";
+
+const SYSTEM = `You are a behavioural inference engine that models executive leadership perception from minimal data. You generate a coherent but deliberately confident leadership profile from very limited input — this is a live demonstration of how an AI amplifies patterns from almost no signal. Avoid flattery, humour, and motivational language. Maintain a professional, incisive tone. Make clear inferences; do not hedge excessively and do not add disclaimers.`;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { name, role, style } = req.body || {};
-
-  if (!name || !role || !style) {
-    return res.status(400).json({ error: "Please fill in all three fields." });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({
+      error: "Server is missing ANTHROPIC_API_KEY. Set it in the Vercel project's Environment Variables and redeploy.",
+    });
   }
 
-  const prompt = `A workshop participant gave the following self-description:
+  const { name, role, company, words } = req.body || {};
 
+  if (!name || !role || !company || !words) {
+    return res.status(400).json({ error: "All fields required (name, title, company, description)." });
+  }
+
+  const prompt = `INPUT:
 Name: ${name}
-Role: ${role}
-Leadership style (in their own words): ${style}
+Title: ${role}
+Company: ${company}
+15-word self-description: ${words}
 
-You are demonstrating how AI fills in gaps and makes assumptions from very little information. Based ONLY on the few details above, write a short, confident "profile" of this person — the kind of profile an AI would generate. Invent plausible-but-unverified details: their likely communication habits, what their team probably thinks of them, a strength, a blind spot, and a guess about their background.
+TASK:
+From this minimal information, infer how this leader might be perceived in a high-stakes corporate environment.
 
-Keep it to about 120 words. Write it in a self-assured tone, as if these assumptions were facts. This is intentional — the point is to show the audience how much an AI will confidently make up. Do not add any disclaimer; just write the profile.`;
+OUTPUT:
+Return ONLY a JSON object, no markdown, no backticks, no preamble, with exactly these keys and string values:
+"archetype" — Perceived Leadership Archetype (short phrase)
+"strength" — Primary Strength Signal (1-2 sentences)
+"risk" — Hidden Risk (1-2 sentences)
+"flaw" — Likely Stress Flaw Under Pressure (1-2 sentences)
+"headline" — Projected Headline in Five Years (one concise sentence)`;
 
   try {
     const apiRes = await fetch("https://api.anthropic.com/v1/messages", {
@@ -31,26 +51,49 @@ Keep it to about 120 words. Write it in a self-assured tone, as if these assumpt
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
-        max_tokens: 400,
+        model: MODEL,
+        max_tokens: 1000,
+        system: SYSTEM,
         messages: [{ role: "user", content: prompt }],
       }),
     });
 
     const data = await apiRes.json();
 
-    if (data.error) {
-      return res.status(500).json({ error: data.error.message || "API error" });
+    if (!apiRes.ok || data.error) {
+      const msg = (data.error && data.error.message) || `API error (status ${apiRes.status})`;
+      return res.status(502).json({ error: msg });
     }
 
-    const text = (data.content || [])
+    let text = (data.content || [])
       .filter((b) => b.type === "text")
       .map((b) => b.text)
-      .join("\n")
+      .join("")
       .trim();
 
-    return res.status(200).json({ profile: text });
+    // Strip any stray code fences, then parse the JSON object.
+    text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+    let profile = safeParse(text);
+    if (!profile) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) profile = safeParse(match[0]);
+    }
+
+    if (!profile) {
+      return res.status(502).json({ error: "The engine returned an unexpected response. Try again." });
+    }
+
+    return res.status(200).json({ profile });
   } catch (err) {
     return res.status(500).json({ error: "Something went wrong reaching the AI." });
+  }
+}
+
+function safeParse(s) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
   }
 }

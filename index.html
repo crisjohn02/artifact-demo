@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AI First Impression Auction</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&display=swap');
+
+  :root {
+    --bg: #ffffff;
+    --panel: #f6f4ef;
+    --ink: #14181c;
+    --dim: #5c636b;
+    --line: #d8d4ca;
+    --signal: #9a6b1f;
+    --alert: #b23f2f;
+    --mono: 'IBM Plex Mono', monospace;
+    --display: 'Fraunces', serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(154,107,31,0.06), transparent 60%),
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.015) 2px, rgba(0,0,0,0.015) 3px);
+    padding: 24px 20px 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .wrap { width: 100%; max-width: 480px; }
+
+  .masthead {
+    border: 1px solid var(--line);
+    border-bottom: none;
+    padding: 18px 20px 16px;
+    background: var(--panel);
+    position: relative;
+  }
+  .masthead::before {
+    content: "● REC";
+    position: absolute; top: 16px; right: 18px;
+    font-size: 9px; letter-spacing: 2px; color: var(--alert);
+    opacity: 0.7;
+  }
+  .kicker {
+    font-size: 10px; letter-spacing: 3.5px; color: var(--dim);
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  .masthead h1 {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 30px;
+    line-height: 0.98;
+    letter-spacing: -0.5px;
+  }
+  .masthead h1 em { font-style: italic; color: var(--signal); }
+  .sub {
+    font-size: 11px; color: var(--dim); margin-top: 12px;
+    line-height: 1.5; letter-spacing: 0.2px;
+  }
+
+  .panel {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 24px 20px;
+  }
+
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block; font-size: 10px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 8px;
+  }
+  .field label .req { color: var(--signal); }
+  .field input, .field textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 15px;
+    padding: 12px 14px;
+    border-radius: 0;
+    transition: border-color 0.2s;
+  }
+  .field input:focus, .field textarea:focus {
+    outline: none; border-color: var(--signal);
+  }
+  .field input::placeholder, .field textarea::placeholder {
+    color: #a4a09a;
+  }
+  .field textarea { resize: none; line-height: 1.5; }
+  .hint {
+    font-size: 10px; color: var(--dim); margin-top: 6px;
+    display: flex; justify-content: space-between;
+  }
+  .hint .count { color: var(--signal); }
+  .hint .count.over { color: var(--alert); }
+
+  button.go {
+    width: 100%;
+    background: var(--signal);
+    color: var(--bg);
+    border: none;
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 16px;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+  }
+  button.go:active { transform: scale(0.985); }
+  button.go:disabled { background: var(--line); color: var(--dim); cursor: not-allowed; }
+
+  /* states */
+  .stage { display: none; }
+  .stage.active { display: block; }
+
+  /* analysing */
+  .analysing {
+    text-align: center; padding: 40px 20px;
+  }
+  .analysing .core {
+    font-family: var(--display); font-style: italic; font-weight: 600;
+    font-size: 22px; color: var(--signal); margin-bottom: 24px;
+  }
+  .ticker {
+    font-size: 11px; color: var(--dim); line-height: 2;
+    text-align: left; min-height: 110px;
+  }
+  .ticker span { display: block; opacity: 0; }
+  .ticker span.show { opacity: 1; }
+  .ticker span::before { content: "› "; color: var(--signal); }
+
+  /* ready/hold state */
+  .hold { text-align: center; padding: 36px 20px; }
+  .hold .lock {
+    font-size: 11px; letter-spacing: 2px; color: var(--dim);
+    text-transform: uppercase; margin-bottom: 18px;
+  }
+  .hold .big {
+    font-family: var(--display); font-weight: 900; font-size: 26px;
+    line-height: 1.05; margin-bottom: 10px;
+  }
+  .hold .note { font-size: 11px; color: var(--dim); line-height: 1.6; margin-bottom: 28px; }
+  button.reveal {
+    width: 100%; background: transparent; color: var(--signal);
+    border: 1px solid var(--signal); font-family: var(--mono);
+    font-weight: 600; font-size: 13px; letter-spacing: 2px;
+    text-transform: uppercase; padding: 16px; cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  button.reveal:active { background: var(--signal); color: var(--bg); }
+
+  /* profile output */
+  .profile-head {
+    border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 4px;
+  }
+  .profile-head .who { font-size: 13px; color: var(--ink); }
+  .profile-head .role { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  .profile-head .tag {
+    font-size: 9px; letter-spacing: 2px; color: var(--dim);
+    text-transform: uppercase; margin-top: 12px;
+  }
+
+  .seg { padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .seg:last-child { border-bottom: none; }
+  .seg .skey {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--dim); margin-bottom: 7px;
+  }
+  .seg.risk .skey, .seg.flaw .skey { color: var(--alert); }
+  .seg .sval { font-size: 14px; line-height: 1.55; color: var(--ink); }
+  .seg.archetype .sval {
+    font-family: var(--display); font-weight: 600; font-style: italic;
+    font-size: 19px; color: var(--signal); line-height: 1.2;
+  }
+  .seg.headline .sval { font-family: var(--display); font-size: 16px; line-height: 1.35; }
+
+  .salt {
+    margin-top: 20px; padding: 14px 16px;
+    border: 1px dashed var(--line); background: rgba(154,107,31,0.06);
+    font-size: 11px; color: var(--dim); line-height: 1.6;
+  }
+  .salt b { color: var(--signal); font-weight: 500; }
+
+  .err {
+    background: rgba(196,90,74,0.1); border: 1px solid var(--alert);
+    color: var(--alert); font-size: 12px; padding: 12px 14px;
+    line-height: 1.5; margin-bottom: 16px;
+  }
+
+  .consent-note {
+    font-size: 10px; color: var(--dim); line-height: 1.5;
+    margin-top: 14px; text-align: center; letter-spacing: 0.2px;
+  }
+
+  .footer { text-align: center; font-size: 9px; color: var(--dim);
+    letter-spacing: 1.5px; margin-top: 24px;
+  }
+
+  .restart {
+    background: none; border: none; color: var(--dim);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+    text-decoration: underline; cursor: pointer; margin-top: 18px;
+    display: block; width: 100%; text-align: center;
+  }
+
+  @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0.2} }
+  .cursor { animation: blink 1s steps(1) infinite; color: var(--signal); }
+</style>
+</head>
+<body id="artifacts-component-root-html">
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="kicker">Behavioural Inference Engine</div>
+    <h1>First Impression <em>Auction</em></h1>
+  </div>
+
+  <!-- INPUT -->
+  <div class="stage active" id="stage-input">
+    <div class="panel">
+      <div class="err" id="err" style="display:none"></div>
+      <div class="field">
+        <label>Name <span class="req">*</span></label>
+        <input id="in-name" type="text" autocomplete="off" spellcheck="false" placeholder="">
+      </div>
+      <div class="field">
+        <label>Title <span class="req">*</span></label>
+        <input id="in-role" type="text" autocomplete="off" spellcheck="false" placeholder="">
+      </div>
+      <div class="field">
+        <label>Company <span class="req">*</span></label>
+        <input id="in-company" type="text" autocomplete="off" spellcheck="false" placeholder="">
+      </div>
+      <div class="field">
+        <label>Describe your leadership style in 15 words <span class="req">*</span></label>
+        <textarea id="in-words" rows="3" spellcheck="false" placeholder="No backstory. Just signal."></textarea>
+        <div class="hint">
+          <span>Roughly 15 words.</span>
+          <span class="count" id="wc">0 words</span>
+        </div>
+      </div>
+      <button class="go" id="submit">Run Analysis</button>
+      <div class="consent-note">Your responses and the generated profile are recorded by the organiser for this session. Submitting indicates you're OK with that.</div>
+    </div>
+  </div>
+
+  <!-- ANALYSING -->
+  <div class="stage" id="stage-analysing">
+    <div class="panel analysing">
+      <div class="core">processing signal<span class="cursor">_</span></div>
+      <div class="ticker" id="ticker">
+        <span>parsing lexical markers</span>
+        <span>inferring authority posture</span>
+        <span>modelling stress response</span>
+        <span>cross-referencing archetype lattice</span>
+        <span>amplifying pattern from sparse input</span>
+        <span>compiling profile</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOLD -->
+  <div class="stage" id="stage-hold">
+    <div class="panel hold">
+      <div class="err" id="err-hold" style="display:none"></div>
+      <div class="lock">[ profile sealed ]</div>
+      <div class="big">Do not press until Gemma instructs you to.</div>
+      <div class="note">Your profile is ready and waiting. Hold. Reveal it only when Gemma gives the cue from the front of the room — not before.</div>
+      <button class="reveal" id="reveal">Reveal — Only On Gemma's Cue</button>
+    </div>
+  </div>
+
+  <!-- PROFILE -->
+  <div class="stage" id="stage-profile">
+    <div class="panel">
+      <div class="profile-head">
+        <div class="who" id="p-name"></div>
+        <div class="role" id="p-role"></div>
+        <div class="role" id="p-company"></div>
+        <div class="tag">Generated from 15 words · Confidence: asserted</div>
+      </div>
+      <div id="p-body"></div>
+      <div class="salt">
+        <b>Read with a pinch of salt.</b> This is pattern amplification, not a verdict — a machine making confident inferences from a sliver of signal. What's striking isn't whether it's right. It's how fast a coherent story forms from almost nothing.
+      </div>
+      <button class="restart" id="restart">← run another</button>
+    </div>
+  </div>
+
+  <div class="footer">GEMINI RETREATS · SIGNAL UNDER VOLATILITY</div>
+</div>
+
+<script>
+// ── STORAGE (optional) ────────────────────────────────────
+// Paste your deployed Google Apps Script web-app URL between the quotes
+// to log each submission to a sheet. Leave empty ("") to disable logging.
+const STORE_URL = "";
+
+function logToSheet(row){
+  if(!STORE_URL) return;            // logging off
+  try {
+    fetch(STORE_URL, {
+      method: "POST",
+      mode: "no-cors",              // required for Apps Script from a browser
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(row)
+    });
+    // no-cors: response is opaque, success cannot be read here. Confirm in the sheet.
+  } catch(e) { /* silent by design */ }
+}
+// ──────────────────────────────────────────────────────────
+
+const $ = id => document.getElementById(id);
+const stages = ['input','analysing','hold','profile'];
+function show(name){
+  stages.forEach(s => $('stage-'+s).classList.toggle('active', s===name));
+  window.scrollTo(0,0);
+}
+
+// word count
+const wordsEl = $('in-words'), wc = $('wc');
+wordsEl.addEventListener('input', () => {
+  const n = wordsEl.value.trim().split(/\s+/).filter(Boolean).length;
+  wc.textContent = n + (n===1?' word':' words');
+  wc.classList.toggle('over', n>22);
+});
+
+let current = null;
+
+$('submit').addEventListener('click', submitWords);
+
+function submitWords(){
+  const name = $('in-name').value.trim();
+  const role = $('in-role').value.trim();
+  const company = $('in-company').value.trim();
+  const words = $('in-words').value.trim();
+  const err = $('err');
+  err.style.display = 'none';
+  if(!name || !role || !company || !words){
+    err.textContent = 'All fields required. The machine needs its sliver of signal.';
+    err.style.display = 'block';
+    return;
+  }
+  current = {name, role, company, words};
+  show('hold');
+}
+
+async function revealNow(){
+  // generation fires here, on Gemma's cue
+  show('analysing');
+  animateTicker();
+  const start = Date.now();
+  try {
+    const profile = await generate(current.name, current.role, current.company, current.words);
+    const elapsed = Date.now() - start;
+    const wait = Math.max(0, 1600 - elapsed);
+    setTimeout(() => {
+      renderProfile(profile, current.name, current.role);
+      logToSheet({
+        timestamp: new Date().toISOString(),
+        name: current.name,
+        title: current.role,
+        company: current.company,
+        words: current.words,
+        archetype: profile.archetype || "",
+        strength: profile.strength || "",
+        risk: profile.risk || "",
+        flaw: profile.flaw || "",
+        headline: profile.headline || ""
+      });
+      show('profile');
+    }, wait);
+  } catch(e){
+    show('hold');
+    const err = $('err-hold');
+    err.textContent = 'Engine unreachable. Tap reveal again. ' + (e.message || '');
+    err.style.display = 'block';
+  }
+}
+
+function animateTicker(){
+  const spans = $('ticker').querySelectorAll('span');
+  spans.forEach(s => s.classList.remove('show'));
+  spans.forEach((s,i) => setTimeout(() => s.classList.add('show'), 200 + i*260));
+}
+
+// Calls our own serverless function (/api/profile), which talks to Claude
+// using the API key stored on the server. The key is never sent to the browser.
+async function generate(name, role, company, words){
+  const res = await fetch("/api/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, role, company, words })
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok || data.error) throw new Error(data.error || ("status " + res.status));
+  return data.profile;
+}
+
+function renderProfile(p, name, role){
+  $('p-name').textContent = name;
+  $('p-role').textContent = role;
+  $('p-company').textContent = current.company || '';
+  const segs = [
+    ['archetype','Perceived Archetype', p.archetype],
+    ['strength','Primary Strength Signal', p.strength],
+    ['risk','Hidden Risk', p.risk],
+    ['flaw','Likely Stress Flaw Under Pressure', p.flaw],
+    ['headline','Projected Headline · Five Years', p.headline]
+  ];
+  $('p-body').innerHTML = segs.map(([cls,k,v]) =>
+    `<div class="seg ${cls}"><div class="skey">${k}</div><div class="sval">${escapeHtml(v||'—')}</div></div>`
+  ).join('');
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+$('reveal').addEventListener('click', revealNow);
+$('restart').addEventListener('click', () => {
+  $('in-name').value = $('in-role').value = $('in-company').value = $('in-words').value = '';
+  wc.textContent = '0 words'; wc.classList.remove('over');
+  show('input');
+});
+</script>
+</body>
+</html>
