@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What Does the AI Assume About You?</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Space+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --ink: #1a1410;
+    --paper: #f4ede1;
+    --accent: #d4502a;
+    --accent2: #2a6b4f;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Fraunces', serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background-image: radial-gradient(circle at 1px 1px, rgba(26,20,16,0.07) 1px, transparent 0);
+    background-size: 18px 18px;
+  }
+
+  .card {
+    background: var(--paper);
+    border: 2.5px solid var(--ink);
+    box-shadow: 8px 8px 0 var(--ink);
+    max-width: 520px;
+    width: 100%;
+    padding: 2.5rem;
+  }
+
+  .tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+
+  h1 {
+    font-size: 2.1rem;
+    font-weight: 900;
+    line-height: 1.05;
+    margin-bottom: 0.5rem;
+  }
+  h1 em { color: var(--accent); font-style: italic; }
+
+  p.sub { font-size: 0.95rem; opacity: 0.75; margin-bottom: 1.75rem; }
+
+  label {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: 1rem 0 0.4rem;
+  }
+
+  input, textarea {
+    width: 100%;
+    font-family: 'Fraunces', serif;
+    font-size: 1rem;
+    padding: 0.7rem 0.85rem;
+    border: 2px solid var(--ink);
+    background: #fff;
+    color: var(--ink);
+    resize: vertical;
+  }
+
+  textarea { min-height: 80px; }
+
+  button {
+    width: 100%;
+    margin-top: 1.5rem;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 1rem;
+    padding: 0.9rem;
+    border: 2.5px solid var(--ink);
+    background: var(--accent2);
+    color: var(--paper);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  button:hover:not(:disabled) { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--ink); }
+  button:active:not(:disabled) { transform: translate(3px,3px); box-shadow: 0 0 0 var(--ink); }
+  button:disabled { opacity: 0.55; cursor: wait; }
+
+  .result {
+    margin-top: 1.75rem;
+    padding-top: 1.5rem;
+    border-top: 1.5px dashed var(--ink);
+    display: none;
+  }
+  .result.show { display: block; }
+  .result h2 {
+    font-size: 0.75rem;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+  .result p { font-size: 1.05rem; line-height: 1.55; }
+
+  .disclaimer {
+    margin-top: 1.25rem;
+    font-size: 0.8rem;
+    font-style: italic;
+    opacity: 0.7;
+  }
+
+  .error { color: var(--accent); font-family: 'Space Mono', monospace; font-size: 0.85rem; margin-top: 1rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="tag">Live AI Demo</div>
+    <h1>What does the AI <em>assume</em> about you?</h1>
+    <p class="sub">Give it three small details. Watch how confidently it makes up the rest.</p>
+
+    <label for="name">Your name</label>
+    <input id="name" type="text" placeholder="e.g. Sam Okafor" />
+
+    <label for="role">Your role</label>
+    <input id="role" type="text" placeholder="e.g. Head of Operations" />
+
+    <label for="style">Your leadership style — about 15 words</label>
+    <textarea id="style" placeholder="e.g. I lead by listening first, then deciding quickly and backing my team fully."></textarea>
+
+    <button id="go" onclick="generate()">Generate my AI profile</button>
+
+    <div class="error" id="error"></div>
+
+    <div class="result" id="result">
+      <h2>The AI's profile of you</h2>
+      <p id="profileText"></p>
+      <p class="disclaimer">Almost none of this was in what you typed. The AI invented it — that's the point.</p>
+    </div>
+  </div>
+
+<script>
+  async function generate() {
+    const name = document.getElementById('name').value.trim();
+    const role = document.getElementById('role').value.trim();
+    const style = document.getElementById('style').value.trim();
+    const btn = document.getElementById('go');
+    const err = document.getElementById('error');
+    const result = document.getElementById('result');
+
+    err.textContent = '';
+    if (!name || !role || !style) {
+      err.textContent = 'Please fill in all three fields.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Thinking…';
+    result.classList.remove('show');
+
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, role, style })
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        err.textContent = data.error;
+      } else {
+        document.getElementById('profileText').textContent = data.profile;
+        result.classList.add('show');
+      }
+    } catch (e) {
+      err.textContent = 'Could not reach the AI. Try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate my AI profile';
+    }
+  }
+</script>
+</body>
+</html>
